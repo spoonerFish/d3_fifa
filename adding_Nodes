@@ -1,0 +1,286 @@
+<html>
+<link href="https://fonts.googleapis.com/css?family=Mansalva&display=swap" rel="stylesheet">
+
+<head>
+  <style>
+    .nodes circle {
+      stroke: #3a403d;
+      stroke-width: 1.5px;
+    }
+
+    .link {
+      stroke: black;
+      stroke-width: 2px;
+    }
+
+    .links line {
+      stroke: #000000;
+      stroke-width: 2px;
+      fill: none;
+    }
+    .button {
+  background-color: #4CAF50; /* Green */
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  font-family: 'Mansalva', cursive;
+}
+  button:hover{
+    color:#000000;
+    background-color:#FFFFFF;
+    }
+  </style>
+</head>
+
+<body>
+
+
+  <svg width="960" height="600"></svg>
+  <button type="button" id="addData" class="button">More data</button>
+  <script src="https://d3js.org/d3.v4.min.js"></script>
+  <script>
+    //Step 1/1A: create an array of objects for our nodes.
+    //This is really 1A; we've only created an array
+    //In d3.csv() we start pulling the data we'll eventually
+    //create the objects (1B)
+    var nodes = [];
+    var dict = [];
+    var links = [];
+    var padding = 50;
+
+
+    var desiredNumberOfRowsFromDataset = 10; //pull desired number from dataset
+    var valueSizeProportion = 10; //for size of nodes
+
+
+
+    var svg = d3.select("svg"),
+      width = +svg.attr("width"),
+      height = +svg.attr("height");
+      
+
+
+
+    //Step 2/2A: call forceSimulation, passing in the objects 
+    //This is (again) really 2A; we've only called it.
+    //We'll update the simulation in d3.csv() when we get the data
+    
+    //Step 3: call the forces
+    var simulation = d3.forceSimulation()
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("link", d3.forceLink(links)) //.distance(10)) 
+      .force("charge", d3.forceManyBody().strength(-1));
+
+
+
+    //loading and saving the data
+    d3.csv('data/fifa_data.csv', function (d) {
+      //row conversion function
+      return {
+        Name: d.Name,
+        Age: +d.Age,
+        Value: Number(d.Value.match(/[+-]?\d+(\.\d+)?/g)),
+        Wage: Number(d.Wage.match(/[+-]?\d+(\.\d+)?/g)),
+        Nationality: d.Nationality,
+        id: d.ID,
+        Club: d.Club.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+        category: 2,
+        Potential: Number(d.Potential)
+      };
+    }, function (error, graph) {
+      if (error) throw error;
+
+
+
+
+      //pruning the data
+      for (j = 0; j < desiredNumberOfRowsFromDataset; j++) {
+        nodes[j] = graph[j];
+      }
+
+      restOfData = graph.splice(desiredNumberOfRowsFromDataset);
+
+
+      var link = svg.append("g")
+        .attr("class", "links")
+        .selectAll("line")
+        .data(links)
+        .enter().append("line")
+        .attr("stroke-width", 2);
+
+      var node = svg.append("g")
+        .attr("class", "nodes")
+        .selectAll("g")
+        .data(nodes)
+        .enter().append("g")
+
+      var circles = node.append("circle")
+        .attr("r", 5)
+        .on('click', mousedown)
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended));
+
+      var label = node.append("text")
+        .text(function (d) {
+          return d.Name;
+        })
+        .attr('x', 6)
+        .attr('y', 3);
+
+      //2B: Calling forceSimulation, passing in the array of objects
+      //from the data that has by now loaded
+      //Step 4: Set up a callback function to update element positions
+      //after each tick
+      simulation
+        .nodes(nodes)
+        .on("tick", ticked);
+
+      simulation
+        .force("link")
+        .links(links);
+
+
+
+
+      function ticked() {
+        circles
+          .attr("cx", function (d) {return d.x;})
+          .attr("cy", function (d) {return d.y;})
+
+        label.attr("x", function (d) {return d.x;})
+          .attr("y", function (d) {return d.y + 40;});
+
+        link.attr("x1", function (d) {return d.source.x;})
+          .attr("y1", function (d) {return d.source.y;})
+          .attr("x2", function (d) {return d.target.x;})
+          .attr("y2", function (d) {return d.target.y;})
+      }
+
+
+
+
+      
+
+      function restart() {
+
+        // GENERAL UPDATE PATTERN: whatever you do to the data
+        // you can cover with this
+
+
+        // returns the same amount of placeholder DOM elements
+        // as they're are data elements
+        node = svg.selectAll("circles").data(nodes, function(d) {return d;})
+        //returns (exit) and removes the same number
+        // of elements which is causing selection>array
+        node.exit().remove();
+
+
+        //returns the elements which are making array > selection
+        //before merging that selection with the our old selection elements
+        node.enter().append("circle")
+          .attr("class", "nodes")
+          .merge(node);
+        //i.e.
+        //  new selection(a) = array(b) - old_selection(c)                  <---------- enter returns new selection(a)
+        // (old_selection(a) + new_selection(c)                             <---------- merge gives us a selection with all the elements
+
+
+      
+
+        // Apply the general update pattern to the links.
+        link = link.data(links, function (d) {
+          return d.source.id + "-" + d.target.id;
+        });
+        link.exit().remove();
+        link = link.enter().append("line").merge(link);
+
+        // Update and restart the simulation.
+        simulation.nodes(nodes);
+        simulation.force("link").links(links);
+        simulation.alpha(1).restart();
+      }
+
+      //pass in the right string e.g. "FC Barcelona"
+      function findMatches(matchingClub) {
+        matchArr = [];
+        //for each node in the array
+        nodes.forEach(node => {
+          //does it match the argument we passed in
+          if (node.Club === matchingClub) {
+            //if so add it to our array for sorting
+            //before we add it to our proper links array
+            matchArr.push(node.index);
+          }
+        })
+        //make sure the link isn't already there and that
+        //both source and target are defined
+        if (matchArr[0] != matchArr[1] &&
+          matchArr[0] != undefined &&
+          matchArr[1] != undefined) {
+          //the link "foo"
+          var foo = {
+            source: matchArr[0],
+            target: matchArr[1]
+          };
+          links.push(foo);
+          restart();
+        }
+      };
+
+
+
+      function mousedown(d) {
+        console.log("You have selected " + d.Name)
+        findMatches(d.Club);
+      }
+
+      const addData = () => {
+      nodes.push(restOfData.shift());
+      //clusterByClub();
+
+      restart();
+      console.log(nodes);
+    };
+
+    //event listeners that rely on functions on this side of the data loading
+    //function
+    document.getElementById('addData')
+      .addEventListener('click', addData);
+
+
+
+
+
+    }) //end of data_loading_function <-} this is the line of no return for functions.
+    //You can't use a function from one side in a function from the other side.
+  
+  
+
+    function dragstarted(d) {
+      if (!d3.event.active) simulation.alphaTarget(.03).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+
+    function dragged(d) {
+      d.fx = d3.event.x;
+      d.fy = d3.event.y;
+    }
+
+    function dragended(d) {
+      if (!d3.event.active) simulation.alphaTarget(.03);
+      d.fx = null;
+      d.fy = null;
+    }
+
+
+  </script>
+</body>
+
+</html>
